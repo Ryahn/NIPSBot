@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, AutocompleteInteraction } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
+import { Logger } from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('add_guild_member')
@@ -113,7 +114,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           
           await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name} and updated their nickname.`);
         } catch (nicknameError) {
-          console.error('Detailed nickname error:', {
+          Logger.error('Detailed nickname error:', {
             error: nicknameError,
             botRolePosition: botMember.roles.highest.position,
             targetRolePosition: targetMember.roles.highest.position,
@@ -131,7 +132,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname.`);
         }
       } else {
-        console.log('Bot missing ManageNicknames permission');
+        Logger.info('Bot missing ManageNicknames permission');
         
         // Store membership without nickname update
         await UserAlliances.query().insert({
@@ -143,7 +144,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname due to missing permissions.`);
       }
     } catch (nicknameError) {
-      console.error('Error updating nickname:', nicknameError);
+      Logger.error('Error updating nickname:', nicknameError);
       
       // Store membership without nickname update
       await UserAlliances.query().insert({
@@ -155,7 +156,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname.`);
     }
   } catch (error) {
-    console.error('Error in add_guild_member command:', error);
+    Logger.error('Error in add_guild_member command:', error);
     await interaction.editReply('❌ An error occurred while adding the member to the guild.');
   }
 }
@@ -184,7 +185,7 @@ export async function autocomplete(interaction: AutocompleteInteraction) {
 
     await interaction.respond(filtered);
   } catch (error) {
-    console.error('Error in guild autocomplete:', error);
+    Logger.error('Error in guild autocomplete:', error);
     await interaction.respond([]);
   }
 } 
