@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, MessageFlags, CommandInteraction, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, TextChannel, ChatInputCommandInteraction } from 'discord.js';
 import { models } from '../../database/models';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('verification')
@@ -47,7 +48,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply('✅ Verification system has been set up!');
   } catch (error) {
-    console.error('Error in verification command:', error);
+    Logger.error('Error in verification command:', error);
     await interaction.editReply('❌ An error occurred while setting up the verification system.');
   }
 }

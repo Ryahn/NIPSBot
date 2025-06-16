@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder, Role } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
+import Logger from '../../utils/logger';
 
 interface ImportedAlliance {
   name: string;
@@ -156,7 +157,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error('Error in alliance_import command:', error);
+    Logger.error('Error in alliance_import command:', error);
     await interaction.editReply('❌ An error occurred while importing alliances.');
   }
 } 

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, AttachmentBuilder, ChannelType, PermissionsBitField, ColorResolvable } from 'discord.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import Logger from '../../utils/logger';
 
 interface PermissionData {
   roles: {
@@ -151,7 +152,7 @@ export async function execute(interaction: CommandInteraction) {
 
     await interaction.editReply('✅ Permissions imported successfully!');
   } catch (error) {
-    console.error('Error in permimport command:', error);
+    Logger.error('Error in permimport command:', error);
     await interaction.editReply('❌ An error occurred while importing permissions.');
   }
 } 

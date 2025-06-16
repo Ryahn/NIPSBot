@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, AutocompleteInteraction } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
-import { Logger } from '../../utils/logger';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('add_guild_member')

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, AutocompleteInteraction } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('remove_guild_member')
@@ -87,7 +88,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         }
       }
     } catch (nicknameError) {
-      console.error('Error restoring nickname:', nicknameError);
+      Logger.error('Error restoring nickname:', nicknameError);
       // Continue with removal even if nickname restoration fails
     }
 
@@ -99,7 +100,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(`✅ Successfully removed ${targetUser.username} from guild ${alliance.name}.`);
   } catch (error) {
-    console.error('Error in remove_guild_member command:', error);
+    Logger.error('Error in remove_guild_member command:', error);
     await interaction.editReply('❌ An error occurred while removing the member from the guild.');
   }
 }
@@ -128,7 +129,7 @@ export async function autocomplete(interaction: AutocompleteInteraction) {
 
     await interaction.respond(filtered);
   } catch (error) {
-    console.error('Error in guild autocomplete:', error);
+    Logger.error('Error in guild autocomplete:', error);
     await interaction.respond([]);
   }
 } 
