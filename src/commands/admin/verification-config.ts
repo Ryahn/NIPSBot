@@ -1,6 +1,9 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, ChannelType, ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, ChannelType, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { models } from '../../database/models';
 import Logger from '../../utils/logger';
+
+// Track in-progress interactions to prevent double execution
+const processingInteractions = new Set<string>();
 
 export const data = new SlashCommandBuilder()
   .setName('verification-config')
@@ -29,6 +32,19 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  // Check if this interaction is already being processed
+  if (processingInteractions.has(interaction.id)) {
+    Logger.warn('Duplicate interaction received', { 
+      interactionId: interaction.id,
+      userId: interaction.user.id,
+      guildId: interaction.guildId
+    });
+    return;
+  }
+
+  // Mark this interaction as being processed
+  processingInteractions.add(interaction.id);
+
   Logger.info('Command execution started', { 
     command: 'verification-config',
     userId: interaction.user.id,
@@ -42,7 +58,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   
   try {
     Logger.debug('Attempting to defer reply');
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     Logger.debug('Reply deferred successfully');
 
     const guildId = interaction.guildId;
@@ -158,5 +174,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         originalError: error instanceof Error ? error.message : 'Unknown error'
       });
     }
+  } finally {
+    // Remove the interaction from the processing set
+    processingInteractions.delete(interaction.id);
   }
 } 

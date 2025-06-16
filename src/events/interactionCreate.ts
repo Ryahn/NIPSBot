@@ -1,4 +1,20 @@
-import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags, ChatInputCommandInteraction, Client, Collection } from 'discord.js';
+import { Events,
+  Interaction,
+  ButtonInteraction,
+  TextChannel, EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  ModalSubmitInteraction,
+  ButtonBuilder,
+  ButtonStyle,
+  DiscordAPIError,
+  MessageFlags,
+  Client,
+  Collection,
+  AttachmentBuilder
+} from 'discord.js';
 import { models } from '../database/models';
 import Logger from '../utils/logger';
 import { generateCaptcha } from '../utils/captcha';
@@ -118,12 +134,15 @@ async function handleVerification(interaction: ButtonInteraction) {
       });
     }
 
+    const captchaBuffer = Buffer.from(captcha.image.toString('base64'), 'base64');
+    const captchaAttachment = new AttachmentBuilder(captchaBuffer, { name: 'captcha.png' });
+
     // Send verification message
     const embed = new EmbedBuilder()
       .setTitle('Verification Required')
       .setDescription(`Please enter the following code to verify yourself\n\nYou have ${timeout} seconds to complete this verification.`)
       .setColor('#0099ff')
-      .setImage(`data:image/png;base64,${captcha.image.toString('base64')}`);
+      .setImage('attachment://captcha.png');
 
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
@@ -133,7 +152,7 @@ async function handleVerification(interaction: ButtonInteraction) {
           .setStyle(ButtonStyle.Primary)
       );
 
-    await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
+    await interaction.reply({ embeds: [embed], components: [row], files: [captchaAttachment], flags: MessageFlags.Ephemeral });
 
     // Set up reminder timer
     const reminderTimeout = setTimeout(async () => {
