@@ -1,6 +1,7 @@
 import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags, ChatInputCommandInteraction } from 'discord.js';
 import { models } from '../database/models';
 import Logger from '../utils/logger';
+import { generateCaptcha } from '../utils/captcha';
 
 export const name = Events.InteractionCreate;
 export const once = false;
@@ -89,6 +90,8 @@ async function handleVerification(interaction: ButtonInteraction) {
     const timeout = settings?.verification_timeout || 300;
     const reminderTime = settings?.reminder_time || 60;
 
+    const captcha = await generateCaptcha();
+
     // Check for existing verification
     let verification = await models.Verification.query()
       .where('user_id', interaction.user.id)
@@ -98,14 +101,14 @@ async function handleVerification(interaction: ButtonInteraction) {
       // If there's an existing verification, update it
       verification = await models.Verification.query()
         .patchAndFetchById(verification.id, {
-          captcha_code: generateCaptcha(),
+          captcha_code: captcha.text,
           verified: false
         });
     } else {
       // Create new verification record
       verification = await models.Verification.query().insert({
         user_id: interaction.user.id,
-        captcha_code: generateCaptcha(),
+        captcha_code: captcha.text,
         verified: false
       });
     }
@@ -113,8 +116,9 @@ async function handleVerification(interaction: ButtonInteraction) {
     // Send verification message
     const embed = new EmbedBuilder()
       .setTitle('Verification Required')
-      .setDescription(`Please enter the following code to verify yourself:\n\n**${verification.captcha_code}**\n\nYou have ${timeout} seconds to complete this verification.`)
-      .setColor('#0099ff');
+      .setDescription(`Please enter the following code to verify yourself\n\nYou have ${timeout} seconds to complete this verification.`)
+      .setColor('#0099ff')
+      .setImage(`data:image/png;base64,${captcha.image.toString('base64')}`);
 
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
@@ -362,12 +366,12 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
   }
 }
 
-function generateCaptcha(): string {
-  // Generate a random 6-character alphanumeric code
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
+// function generateCaptcha(): string {
+//   // Generate a random 6-character alphanumeric code
+//   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+//   let code = '';
+//   for (let i = 0; i < 6; i++) {
+//     code += chars.charAt(Math.floor(Math.random() * chars.length));
+//   }
+//   return code;
+// }
