@@ -96,9 +96,9 @@ client.on('shardError', (error) => {
 })
 
 // Handle debug events
-client.on('debug', (info) => {
-  Logger.debug('Discord debug', { info })
-})
+// client.on('debug', (info) => {
+//   Logger.debug('Discord debug', { info })
+// })
 
 // Handle warn events
 client.on('warn', (info) => {
