@@ -89,16 +89,36 @@ client.on('shardError', (error) => {
   })
 })
 
+// Handle debug events
+client.on('debug', (info) => {
+  Logger.debug('Discord debug', { info })
+})
+
+// Handle warn events
+client.on('warn', (info) => {
+  Logger.warn('Discord warning', { info })
+})
+
 async function startBot() {
   try {
     Logger.info('Starting bot initialization')
+    
+    Logger.info('Initializing database')
     await initializeDatabase()
+    
+    Logger.info('Verifying model connection')
     await verifyModelConnection()
+    
+    Logger.info('Loading events')
     await loadEvents(client)
+    
+    Logger.info('Loading commands')
     await loadCommands(client)
     
     Logger.info('Attempting to login to Discord')
     await client.login(config.discord.token)
+    
+    Logger.info('Bot startup completed successfully')
   } catch (error) {
     Logger.error('Bot startup failed', {
       error: error instanceof Error ? error.message : 'Unknown error',

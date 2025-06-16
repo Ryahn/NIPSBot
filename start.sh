@@ -91,8 +91,7 @@ main() {
             ;;
         "soft")
             echo "Performing soft rebuild..."
-            run_docker_compose build
-            run_docker_compose up -d
+            run_docker_compose up -d --build
             ;;
         "start")
             echo "Starting containers..."

@@ -11,6 +11,25 @@ export async function execute(client: Client) {
       id: client.user?.id,
       guilds: client.guilds.cache.size
     })
+
+    // Log guild information
+    for (const guild of client.guilds.cache.values()) {
+      Logger.info('Connected to guild', {
+        id: guild.id,
+        name: guild.name,
+        memberCount: guild.memberCount,
+        channels: guild.channels.cache.size,
+        roles: guild.roles.cache.size
+      })
+    }
+
+    // Set bot status
+    await client.user?.setPresence({
+      activities: [{ name: 'with commands | /help', type: 0 }],
+      status: 'online'
+    })
+
+    Logger.info('Bot presence set')
   } catch (error) {
     Logger.error('Error in ready event handler', {
       error: error instanceof Error ? error.message : 'Unknown error',
