@@ -1,18 +1,76 @@
-import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags } from 'discord.js';
+import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags, ChatInputCommandInteraction } from 'discord.js';
 import { models } from '../database/models';
+import Logger from '../utils/logger';
 
 export const name = Events.InteractionCreate;
 export const once = false;
 
 export async function execute(interaction: Interaction) {
-  if (interaction.isButton()) {
-    if (interaction.customId === 'verify_button') {
-      await handleVerification(interaction);
-    } else if (interaction.customId === 'verify_captcha') {
-      await handleCaptchaVerification(interaction);
+  try {
+    Logger.debug('Interaction received', {
+      type: interaction.type,
+      id: interaction.id,
+      userId: interaction.user.id,
+      guildId: interaction.guildId
+    });
+
+    if (interaction.isChatInputCommand()) {
+      Logger.info('Processing chat input command', {
+        commandName: interaction.commandName,
+        userId: interaction.user.id,
+        guildId: interaction.guildId
+      });
+
+      const command = interaction.client.commands.get(interaction.commandName);
+      if (!command) {
+        Logger.warn('Command not found', {
+          commandName: interaction.commandName,
+          userId: interaction.user.id,
+          guildId: interaction.guildId
+        });
+        return await interaction.reply({ content: '❌ Command not found!', ephemeral: true });
+      }
+
+      try {
+        await command.execute(interaction);
+        Logger.info('Command executed successfully', {
+          commandName: interaction.commandName,
+          userId: interaction.user.id,
+          guildId: interaction.guildId
+        });
+      } catch (error) {
+        Logger.error('Error executing command', {
+          commandName: interaction.commandName,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        const errorMessage = '❌ An error occurred while executing this command.';
+        if (interaction.replied || interaction.deferred) {
+          await interaction.editReply(errorMessage);
+        } else {
+          await interaction.reply({ content: errorMessage, ephemeral: true });
+        }
+      }
+    } else if (interaction.isButton()) {
+      if (interaction.customId === 'verify_button') {
+        await handleVerification(interaction);
+      } else if (interaction.customId === 'verify_captcha') {
+        await handleCaptchaVerification(interaction);
+      }
+    } else if (interaction.isModalSubmit() && interaction.customId === 'captcha_modal') {
+      await handleCaptchaSubmit(interaction);
     }
-  } else if (interaction.isModalSubmit() && interaction.customId === 'captcha_modal') {
-    await handleCaptchaSubmit(interaction);
+  } catch (error) {
+    Logger.error('Error in interactionCreate event handler', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      interactionType: interaction.type,
+      userId: interaction.user.id,
+      guildId: interaction.guildId
+    });
   }
 }
 

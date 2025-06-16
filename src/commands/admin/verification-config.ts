@@ -32,7 +32,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   Logger.info('Command execution started', { 
     command: 'verification-config',
     userId: interaction.user.id,
-    guildId: interaction.guildId
+    guildId: interaction.guildId,
+    options: {
+      logChannel: interaction.options.getChannel('log_channel')?.id,
+      timeout: interaction.options.getInteger('timeout'),
+      reminderTime: interaction.options.getInteger('reminder_time')
+    }
   });
   
   try {
