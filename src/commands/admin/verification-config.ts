@@ -124,8 +124,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           .patch({
             log_channel_id: logChannel?.id || settings.log_channel_id,
             verification_timeout: timeout || settings.verification_timeout,
-            reminder_time: reminderTime || settings.reminder_time,
-            updated_at: new Date()
+            reminder_time: reminderTime || settings.reminder_time
           });
         Logger.debug('Settings updated successfully');
       } catch (error) {
