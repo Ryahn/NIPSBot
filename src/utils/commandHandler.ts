@@ -1,11 +1,18 @@
-import { Collection, REST, Routes, SlashCommandBuilder } from 'discord.js'
+import { Collection, REST, Routes, SlashCommandBuilder, CommandInteraction, RESTPostAPIApplicationCommandsJSONBody } from 'discord.js'
 import { config } from '../config/env'
 import fs from 'fs'
 import path from 'path'
+import Logger from './logger'
 
-async function loadCommandsRecursively(dir: string): Promise<{ commands: Collection<string, any>, commandsArray: SlashCommandBuilder[] }> {
-  const commands: Collection<string, any> = new Collection()
-  const commandsArray: SlashCommandBuilder[] = []
+interface Command {
+  data: SlashCommandBuilder;
+  execute: (interaction: CommandInteraction) => Promise<void>;
+  cooldown?: number; // Cooldown in seconds
+}
+
+async function loadCommandsRecursively(dir: string): Promise<{ commands: Collection<string, Command>, commandsArray: RESTPostAPIApplicationCommandsJSONBody[] }> {
+  const commands: Collection<string, Command> = new Collection()
+  const commandsArray: RESTPostAPIApplicationCommandsJSONBody[] = []
   
   const files = fs.readdirSync(dir)
   
@@ -21,13 +28,21 @@ async function loadCommandsRecursively(dir: string): Promise<{ commands: Collect
       })
       commandsArray.push(...subCommandsArray)
     } else if (file.endsWith('.ts')) {
-      const command = require(filePath)
-      
-      if ('data' in command && 'execute' in command) {
-        commands.set(command.data.name, command)
-        commandsArray.push(command.data.toJSON())
-      } else {
-        console.log(`⚠️ Command at ${filePath} is missing required properties`)
+      try {
+        const command = require(filePath) as Command
+        
+        if ('data' in command && 'execute' in command) {
+          commands.set(command.data.name, command)
+          commandsArray.push(command.data.toJSON())
+        } else {
+          Logger.warn('Command missing required properties', { filePath })
+        }
+      } catch (error) {
+        Logger.error('Error loading command', {
+          filePath,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        })
       }
     }
   }
@@ -44,17 +59,67 @@ export async function loadCommands(client: any) {
     // Register commands with Discord
     const rest = new REST().setToken(config.discord.token)
     
-    console.log('🔄 Started refreshing application (/) commands')
+    Logger.info('Started refreshing application (/) commands')
     
     await rest.put(
       Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId),
       { body: commandsArray }
     )
     
-    console.log('✅ Successfully reloaded application (/) commands')
+    Logger.info('Successfully reloaded application (/) commands')
     
     client.commands = commands
+
+    // Set up command handler
+    client.on('interactionCreate', async (interaction: CommandInteraction) => {
+      if (!interaction.isCommand()) return
+
+      const command = commands.get(interaction.commandName)
+      if (!command) return
+
+      try {
+        // Check for cooldown
+        if (command.cooldown && client.isOnCooldown(command.data.name, interaction.user.id, command.cooldown)) {
+          const remainingTime = Math.ceil(
+            (client.commandCooldowns.get(command.data.name)!.get(interaction.user.id)! + command.cooldown * 1000 - Date.now()) / 1000
+          )
+          return await interaction.reply({
+            content: `Please wait ${remainingTime} seconds before using this command again.`,
+            ephemeral: true
+          })
+        }
+
+        await command.execute(interaction)
+      } catch (error) {
+        Logger.error('Error executing command', {
+          command: interaction.commandName,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        })
+
+        try {
+          const reply = interaction.replied || interaction.deferred
+            ? interaction.followUp
+            : interaction.reply
+
+          await reply({
+            content: 'There was an error executing this command.',
+            ephemeral: true
+          })
+        } catch (replyError) {
+          Logger.error('Error sending error message', {
+            error: replyError instanceof Error ? replyError.message : 'Unknown error',
+            stack: replyError instanceof Error ? replyError.stack : undefined
+          })
+        }
+      }
+    })
   } catch (error) {
-    console.error('❌ Error loading commands:', error)
+    Logger.error('Error loading commands', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
   }
 } 
