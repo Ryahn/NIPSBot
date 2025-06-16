@@ -3,6 +3,7 @@ import { config } from './config/env'
 import { initializeDatabase, verifyModelConnection } from './database/db'
 import { loadCommands } from './utils/commandHandler'
 import { loadEvents } from './utils/eventHandler'
+import logger from './utils/logger'
 
 // Extend the Client class to include commands
 class CustomClient extends Client {
@@ -29,9 +30,12 @@ async function startBot() {
     await loadEvents(client)
     await loadCommands(client)
     await client.login(config.discord.token)
-    console.log('🤖 Bot is ready!')
+    logger.info('Bot is ready!')
   } catch (error) {
-    console.error('❌ Bot startup failed:', error)
+    logger.error('Bot startup failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
     process.exit(1)
   }
 }

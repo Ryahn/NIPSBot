@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, ChannelType, ChatInputCommandInteraction } from 'discord.js';
 import { models } from '../../database/models';
+import logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('verification-config')
@@ -28,17 +29,17 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  console.log('[VerificationConfig] Command execution started');
+  logger.info('Command execution started', { command: 'verification-config' });
   
   try {
-    console.log('[VerificationConfig] Deferring reply');
+    logger.debug('Deferring reply');
     await interaction.deferReply({ ephemeral: true });
 
     const guildId = interaction.guildId;
-    console.log('[VerificationConfig] Guild ID:', guildId);
+    logger.debug('Guild ID retrieved', { guildId });
     
     if (!guildId) {
-      console.log('[VerificationConfig] No guild ID found');
+      logger.warn('Command used outside of a server');
       return await interaction.editReply('❌ This command can only be used in a server!');
     }
 
@@ -46,29 +47,29 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const timeout = interaction.options.getInteger('timeout');
     const reminderTime = interaction.options.getInteger('reminder_time');
     
-    console.log('[VerificationConfig] Options received:', {
+    logger.debug('Command options received', {
       logChannel: logChannel?.id,
       timeout,
       reminderTime
     });
 
     // Get or create settings
-    console.log('[VerificationConfig] Querying database for existing settings');
+    logger.debug('Querying database for existing settings');
     let settings = await models.VerificationSettings.query()
       .where('guild_id', guildId)
       .first();
 
     if (!settings) {
-      console.log('[VerificationConfig] No existing settings found, creating new settings');
+      logger.info('Creating new verification settings', { guildId });
       settings = await models.VerificationSettings.query().insert({
         guild_id: guildId,
         log_channel_id: logChannel?.id || null,
         verification_timeout: timeout || 300,
         reminder_time: reminderTime || 60
       });
-      console.log('[VerificationConfig] New settings created:', settings);
+      logger.debug('New settings created', { settings });
     } else {
-      console.log('[VerificationConfig] Updating existing settings');
+      logger.info('Updating existing settings', { guildId });
       // Update existing settings
       await models.VerificationSettings.query()
         .where('guild_id', guildId)
@@ -78,7 +79,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           reminder_time: reminderTime || settings.reminder_time,
           updated_at: new Date()
         });
-      console.log('[VerificationConfig] Settings updated successfully');
+      logger.debug('Settings updated successfully');
     }
 
     const response = [
@@ -88,12 +89,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       `Reminder Time: ${reminderTime || settings.reminder_time} seconds before expiry`
     ].join('\n');
 
-    console.log('[VerificationConfig] Sending response to user');
+    logger.debug('Sending response to user');
     await interaction.editReply(response);
-    console.log('[VerificationConfig] Command execution completed successfully');
+    logger.info('Command execution completed successfully');
   } catch (error) {
-    console.error('[VerificationConfig] Error in verification-config command:', error);
-    console.error('[VerificationConfig] Error stack:', error instanceof Error ? error.stack : 'No stack trace available');
+    logger.error('Error in verification-config command', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     await interaction.editReply('❌ An error occurred while updating verification settings.');
   }
 } 
