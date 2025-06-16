@@ -1,43 +1,11 @@
-import { Interaction, MessageFlags, MessageFlagsBitField, ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction, Role, Collection, Client } from 'discord.js';
-import { config } from '../config/env';
-import { generateCaptcha } from '../utils/captcha';
-import { knex } from '../database/db';
+import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { models } from '../database/models';
 
-export const name = 'interactionCreate';
+export const name = Events.InteractionCreate;
+export const once = false;
 
 export async function execute(interaction: Interaction) {
-  const client = interaction.client as Client & { commands: Collection<string, any> };
-
-  if (interaction.isChatInputCommand() || interaction.isAutocomplete()) {
-    const command = client.commands.get(interaction.commandName)
-    if (!command) {
-      console.error(`No command matching ${interaction.commandName} was found.`)
-      return
-    }
-
-    try {
-      if (interaction.isChatInputCommand()) {
-        await command.execute(interaction)
-      } else if (interaction.isAutocomplete() && command.autocomplete) {
-        await command.autocomplete(interaction)
-      }
-    } catch (error) {
-      console.error(`Error executing ${interaction.commandName}`)
-      console.error(error)
-
-      if (interaction.isChatInputCommand()) {
-        const errorMessage = { 
-          content: 'There was an error while executing this command!', 
-          flags: 64
-        }
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(errorMessage)
-        } else {
-          await interaction.reply(errorMessage)
-        }
-      }
-    }
-  } else if (interaction.isButton()) {
+  if (interaction.isButton()) {
     if (interaction.customId === 'verify_button') {
       await handleVerification(interaction);
     } else if (interaction.customId === 'verify_captcha') {
@@ -50,17 +18,33 @@ export async function execute(interaction: Interaction) {
 
 async function handleVerification(interaction: ButtonInteraction) {
   try {
-    // Generate a new captcha
-    const { image, text } = await generateCaptcha();
-    
-    // Create verification embed
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      return await interaction.reply({ content: '❌ This command can only be used in a server!', ephemeral: true });
+    }
+
+    // Get verification settings
+    const settings = await models.VerificationSettings.query()
+      .where('guild_id', guildId)
+      .first();
+
+    const timeout = settings?.verification_timeout || 300;
+    const reminderTime = settings?.reminder_time || 60;
+
+    // Create verification record
+    const verification = await models.Verification.query().insert({
+      user_id: interaction.user.id,
+      captcha_code: generateCaptcha(),
+      verified: false,
+      created_at: new Date()
+    });
+
+    // Send verification message
     const embed = new EmbedBuilder()
       .setTitle('Verification Required')
-      .setDescription('Please enter the code shown in the image below to verify yourself.')
-      .setColor('#0099ff')
-      .setImage('attachment://captcha.png');
+      .setDescription(`Please enter the following code to verify yourself:\n\n**${verification.captcha_code}**\n\nYou have ${timeout} seconds to complete this verification.`)
+      .setColor('#0099ff');
 
-    // Create verification button
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
@@ -69,45 +53,73 @@ async function handleVerification(interaction: ButtonInteraction) {
           .setStyle(ButtonStyle.Primary)
       );
 
-    // Send DM to user
-    await interaction.user.send({
-      embeds: [embed],
-      components: [row],
-      files: [{
-        attachment: image,
-        name: 'captcha.png'
-      }]
-    });
+    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 
-    // Check for existing pending verification
-    const existing = await knex('verification')
-      .where({ user_id: interaction.user.id, verified: false })
-      .first();
+    // Set up reminder timer
+    const reminderTimeout = setTimeout(async () => {
+      try {
+        const verificationStatus = await models.Verification.query()
+          .where('id', verification.id)
+          .first();
 
-    if (!existing) {
-      // Store verification data in database
-      await knex('verification').insert({
-        user_id: interaction.user.id,
-        captcha_code: text,
-        verified: false
-      });
-    } else {
-      // Update the captcha_code if a pending verification exists
-      await knex('verification')
-        .where({ id: existing.id })
-        .update({ captcha_code: text });
-    }
+        if (verificationStatus && !verificationStatus.verified) {
+          await interaction.followUp({
+            content: `⚠️ Your verification will expire in ${reminderTime} seconds! Please complete the verification soon.`,
+            ephemeral: true
+          });
+        }
+      } catch (error) {
+        console.error('Error sending reminder:', error);
+      }
+    }, (timeout - reminderTime) * 1000);
 
-    await interaction.reply({
-      content: '✅ Please check your DMs to complete the verification process.',
-      flags: MessageFlags.Ephemeral
-    });
+    // Set up expiration timer
+    const expirationTimeout = setTimeout(async () => {
+      try {
+        const verificationStatus = await models.Verification.query()
+          .where('id', verification.id)
+          .first();
+
+        if (verificationStatus && !verificationStatus.verified) {
+          await models.Verification.query()
+            .where('id', verification.id)
+            .delete();
+
+          await interaction.followUp({
+            content: '❌ Verification expired. Please try again.',
+            ephemeral: true
+          });
+
+          // Log the timeout if log channel is set
+          if (settings?.log_channel_id) {
+            const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
+            if (logChannel) {
+              const logEmbed = new EmbedBuilder()
+                .setTitle('Verification Timeout')
+                .setDescription(`User ${interaction.user} failed to verify within the time limit.`)
+                .setColor('#ff0000')
+                .setTimestamp();
+
+              await logChannel.send({ embeds: [logEmbed] });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error handling verification expiration:', error);
+      }
+    }, timeout * 1000);
+
+    // Clean up timers when verification is completed
+    const cleanup = () => {
+      clearTimeout(reminderTimeout);
+      clearTimeout(expirationTimeout);
+    };
+
+    // Store cleanup function for later use
+    (interaction as any).verificationCleanup = cleanup;
   } catch (error) {
-    console.error('Error in verification process:', error);
-    await interaction.reply({ 
-      content: '❌ Failed to start verification process. Please make sure your DMs are open.',
-      flags: MessageFlags.Ephemeral
-    });
+    console.error('Error in verification handler:', error);
+    await interaction.reply({ content: '❌ An error occurred during verification.', ephemeral: true });
   }
 }
 
@@ -120,7 +132,7 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
 
     const codeInput = new TextInputBuilder()
       .setCustomId('captcha_code')
-      .setLabel('Enter the code shown in the image')
+      .setLabel('Enter the code shown above')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMinLength(6)
@@ -134,7 +146,7 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
     console.error('Error showing captcha modal:', error);
     await interaction.reply({ 
       content: '❌ An error occurred while showing the verification form.',
-      flags: MessageFlags.Ephemeral
+      ephemeral: true
     });
   }
 }
@@ -144,7 +156,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     const code = interaction.fields.getTextInputValue('captcha_code');
     
     // Get verification data from database
-    const verification = await knex('verification')
+    const verification = await models.Verification.query()
       .where({
         user_id: interaction.user.id,
         verified: false
@@ -154,45 +166,68 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     if (!verification) {
       return await interaction.reply({
         content: '❌ No pending verification found. Please start the verification process again.',
-        flags: MessageFlags.Ephemeral
+        ephemeral: true
       });
     }
 
     if (code.toUpperCase() === verification.captcha_code) {
       // Update verification status
-      await knex('verification')
+      await models.Verification.query()
         .where('id', verification.id)
-        .update({
+        .patch({
           verified: true,
           verified_at: new Date()
         });
 
-      // Add verified role
-      const client = interaction.client as Client;
-      const guild = await client.guilds.fetch(config.discord.guildId!);
-      if (guild) {
-        const member = await guild.members.fetch(interaction.user.id);
-        const verifiedRole = guild.roles.cache.find((role: Role) => role.name === 'Verified');
-        if (verifiedRole) {
-          await member.roles.add(verifiedRole);
+      // Get verification settings for logging
+      const settings = await models.VerificationSettings.query()
+        .where('guild_id', interaction.guildId)
+        .first();
+
+      // Log successful verification if log channel is set
+      if (settings?.log_channel_id) {
+        const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
+        if (logChannel) {
+          const logEmbed = new EmbedBuilder()
+            .setTitle('Verification Successful')
+            .setDescription(`User ${interaction.user} has successfully verified.`)
+            .setColor('#00ff00')
+            .setTimestamp();
+
+          await logChannel.send({ embeds: [logEmbed] });
         }
       }
 
       await interaction.reply({
         content: '✅ Verification successful! You now have access to the server.',
-        flags: MessageFlags.Ephemeral
+        ephemeral: true
       });
+
+      // Clean up timers if they exist
+      if ((interaction as any).verificationCleanup) {
+        (interaction as any).verificationCleanup();
+      }
     } else {
       await interaction.reply({
         content: '❌ Invalid verification code. Please try again.',
-        flags: MessageFlags.Ephemeral
+        ephemeral: true
       });
     }
   } catch (error) {
     console.error('Error in captcha submission:', error);
     await interaction.reply({
       content: '❌ An error occurred while verifying your code.',
-      flags: MessageFlags.Ephemeral
+      ephemeral: true
     });
   }
+}
+
+function generateCaptcha(): string {
+  // Generate a random 6-character alphanumeric code
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
 }
