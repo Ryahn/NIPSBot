@@ -28,31 +28,47 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ ephemeral: true });
-
+  console.log('[VerificationConfig] Command execution started');
+  
   try {
+    console.log('[VerificationConfig] Deferring reply');
+    await interaction.deferReply({ ephemeral: true });
+
     const guildId = interaction.guildId;
+    console.log('[VerificationConfig] Guild ID:', guildId);
+    
     if (!guildId) {
+      console.log('[VerificationConfig] No guild ID found');
       return await interaction.editReply('❌ This command can only be used in a server!');
     }
 
     const logChannel = interaction.options.getChannel('log_channel');
     const timeout = interaction.options.getInteger('timeout');
     const reminderTime = interaction.options.getInteger('reminder_time');
+    
+    console.log('[VerificationConfig] Options received:', {
+      logChannel: logChannel?.id,
+      timeout,
+      reminderTime
+    });
 
     // Get or create settings
+    console.log('[VerificationConfig] Querying database for existing settings');
     let settings = await models.VerificationSettings.query()
       .where('guild_id', guildId)
       .first();
 
     if (!settings) {
+      console.log('[VerificationConfig] No existing settings found, creating new settings');
       settings = await models.VerificationSettings.query().insert({
         guild_id: guildId,
         log_channel_id: logChannel?.id || null,
         verification_timeout: timeout || 300,
         reminder_time: reminderTime || 60
       });
+      console.log('[VerificationConfig] New settings created:', settings);
     } else {
+      console.log('[VerificationConfig] Updating existing settings');
       // Update existing settings
       await models.VerificationSettings.query()
         .where('guild_id', guildId)
@@ -62,6 +78,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           reminder_time: reminderTime || settings.reminder_time,
           updated_at: new Date()
         });
+      console.log('[VerificationConfig] Settings updated successfully');
     }
 
     const response = [
@@ -71,9 +88,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       `Reminder Time: ${reminderTime || settings.reminder_time} seconds before expiry`
     ].join('\n');
 
+    console.log('[VerificationConfig] Sending response to user');
     await interaction.editReply(response);
+    console.log('[VerificationConfig] Command execution completed successfully');
   } catch (error) {
-    console.error('Error in verification-config command:', error);
+    console.error('[VerificationConfig] Error in verification-config command:', error);
+    console.error('[VerificationConfig] Error stack:', error instanceof Error ? error.stack : 'No stack trace available');
     await interaction.editReply('❌ An error occurred while updating verification settings.');
   }
 } 

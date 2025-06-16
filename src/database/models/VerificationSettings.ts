@@ -17,7 +17,7 @@ class VerificationSettings extends Model implements VerificationSettings {
 
   static jsonSchema = {
     type: 'object',
-    required: ['guild_id'],
+    required: ['guild_id', 'verification_timeout', 'reminder_time'],
     properties: {
       id: { type: 'string' },
       guild_id: { type: 'string' },

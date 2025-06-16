@@ -5,13 +5,17 @@ export async function up(knex: Knex): Promise<void> {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('guild_id').notNullable();
     table.string('log_channel_id').nullable();
-    table.integer('verification_timeout').defaultTo(300); // 5 minutes in seconds
-    table.integer('reminder_time').defaultTo(60); // 1 minute before expiry
+    table.integer('verification_timeout').notNullable().defaultTo(300);
+    table.integer('reminder_time').notNullable().defaultTo(60);
     table.timestamp('created_at').defaultTo(knex.fn.now());
     table.timestamp('updated_at').defaultTo(knex.fn.now());
 
-    // Ensure one settings per guild
+    // Ensure each guild has only one settings record
     table.unique(['guild_id']);
+    
+    // Add indexes for common queries
+    table.index(['guild_id']);
+    table.index(['log_channel_id']);
   });
 }
 
