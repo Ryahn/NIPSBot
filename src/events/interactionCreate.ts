@@ -1,4 +1,4 @@
-import { Interaction, ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction, Role } from 'discord.js';
+import { Interaction, MessageFlags, MessageFlagsBitField, ButtonInteraction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ModalSubmitInteraction, Role, Collection, Client } from 'discord.js';
 import { config } from '../config/env';
 import { generateCaptcha } from '../utils/captcha';
 import { knex } from '../database/db';
@@ -6,7 +6,7 @@ import { knex } from '../database/db';
 export const name = 'interactionCreate';
 
 export async function execute(interaction: Interaction) {
-  const client = interaction.client;
+  const client = interaction.client as Client & { commands: Collection<string, any> };
 
   if (interaction.isChatInputCommand() || interaction.isAutocomplete()) {
     const command = client.commands.get(interaction.commandName)
@@ -28,7 +28,7 @@ export async function execute(interaction: Interaction) {
       if (interaction.isChatInputCommand()) {
         const errorMessage = { 
           content: 'There was an error while executing this command!', 
-          ephemeral: true 
+          flags: 64
         }
         if (interaction.replied || interaction.deferred) {
           await interaction.followUp(errorMessage)
@@ -79,23 +79,34 @@ async function handleVerification(interaction: ButtonInteraction) {
       }]
     });
 
-    // Store verification data in database
-    await knex('verification').insert({
-      user_id: interaction.user.id,
-      guild_id: interaction.guildId,
-      captcha_code: text,
-      verified: false
-    });
+    // Check for existing pending verification
+    const existing = await knex('verification')
+      .where({ user_id: interaction.user.id, verified: false })
+      .first();
 
-    await interaction.reply({ 
+    if (!existing) {
+      // Store verification data in database
+      await knex('verification').insert({
+        user_id: interaction.user.id,
+        captcha_code: text,
+        verified: false
+      });
+    } else {
+      // Update the captcha_code if a pending verification exists
+      await knex('verification')
+        .where({ id: existing.id })
+        .update({ captcha_code: text });
+    }
+
+    await interaction.reply({
       content: '✅ Please check your DMs to complete the verification process.',
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral
     });
   } catch (error) {
     console.error('Error in verification process:', error);
     await interaction.reply({ 
       content: '❌ Failed to start verification process. Please make sure your DMs are open.',
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral
     });
   }
 }
@@ -123,7 +134,7 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
     console.error('Error showing captcha modal:', error);
     await interaction.reply({ 
       content: '❌ An error occurred while showing the verification form.',
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral
     });
   }
 }
@@ -136,7 +147,6 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     const verification = await knex('verification')
       .where({
         user_id: interaction.user.id,
-        guild_id: interaction.guildId,
         verified: false
       })
       .first();
@@ -144,7 +154,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     if (!verification) {
       return await interaction.reply({
         content: '❌ No pending verification found. Please start the verification process again.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -158,7 +168,8 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
         });
 
       // Add verified role
-      const guild = interaction.guild;
+      const client = interaction.client as Client;
+      const guild = await client.guilds.fetch(config.discord.guildId!);
       if (guild) {
         const member = await guild.members.fetch(interaction.user.id);
         const verifiedRole = guild.roles.cache.find((role: Role) => role.name === 'Verified');
@@ -169,19 +180,19 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
 
       await interaction.reply({
         content: '✅ Verification successful! You now have access to the server.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     } else {
       await interaction.reply({
         content: '❌ Invalid verification code. Please try again.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
   } catch (error) {
     console.error('Error in captcha submission:', error);
     await interaction.reply({
       content: '❌ An error occurred while verifying your code.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 }
