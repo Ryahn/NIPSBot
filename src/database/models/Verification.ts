@@ -26,6 +26,16 @@ class Verification extends Model implements Verification {
       verified_at: { type: ['string', 'null'], format: 'date-time' }
     }
   };
+
+  $beforeInsert() {
+    this.created_at = new Date();
+  }
+
+  $beforeUpdate() {
+    if (this.verified && !this.verified_at) {
+      this.verified_at = new Date();
+    }
+  }
 }
 
 export default Verification; 

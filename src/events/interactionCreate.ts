@@ -1,4 +1,4 @@
-import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError } from 'discord.js';
+import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags } from 'discord.js';
 import { models } from '../database/models';
 
 export const name = Events.InteractionCreate;
@@ -20,7 +20,7 @@ async function handleVerification(interaction: ButtonInteraction) {
   try {
     const guildId = interaction.guildId;
     if (!guildId) {
-      return await interaction.reply({ content: '❌ This command can only be used in a server!', ephemeral: true });
+      return await interaction.reply({ content: '❌ This command can only be used in a server!', flags: MessageFlags.Ephemeral });
     }
 
     // Get verification settings
@@ -35,8 +35,7 @@ async function handleVerification(interaction: ButtonInteraction) {
     const verification = await models.Verification.query().insert({
       user_id: interaction.user.id,
       captcha_code: generateCaptcha(),
-      verified: false,
-      created_at: new Date()
+      verified: false
     });
 
     // Send verification message
@@ -53,7 +52,7 @@ async function handleVerification(interaction: ButtonInteraction) {
           .setStyle(ButtonStyle.Primary)
       );
 
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
 
     // Set up reminder timer
     const reminderTimeout = setTimeout(async () => {
@@ -66,7 +65,7 @@ async function handleVerification(interaction: ButtonInteraction) {
           try {
             await interaction.followUp({
               content: `⚠️ Your verification will expire in ${reminderTime} seconds! Please complete the verification soon.`,
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           } catch (error) {
             if (error instanceof DiscordAPIError && error.code === 10062) {
@@ -98,7 +97,7 @@ async function handleVerification(interaction: ButtonInteraction) {
           try {
             await interaction.followUp({
               content: '❌ Verification expired. Please try again.',
-              ephemeral: true
+              flags: MessageFlags.Ephemeral
             });
           } catch (error) {
             if (error instanceof DiscordAPIError && error.code === 10062) {
@@ -143,7 +142,7 @@ async function handleVerification(interaction: ButtonInteraction) {
   } catch (error) {
     console.error('Error in verification handler:', error);
     try {
-      await interaction.reply({ content: '❌ An error occurred during verification.', ephemeral: true });
+      await interaction.reply({ content: '❌ An error occurred during verification.', flags: MessageFlags.Ephemeral });
     } catch (replyError) {
       console.error('Error sending error message:', replyError);
     }
@@ -163,7 +162,7 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
     if (!verification) {
       return await interaction.reply({
         content: '❌ No pending verification found. Please start the verification process again.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -189,7 +188,7 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
     try {
       await interaction.reply({ 
         content: '❌ An error occurred while showing the verification form.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     } catch (replyError) {
       console.error('Error sending error message:', replyError);
@@ -212,7 +211,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     if (!verification) {
       return await interaction.reply({
         content: '❌ No pending verification found. Please start the verification process again.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
 
@@ -221,8 +220,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
       await models.Verification.query()
         .where('id', verification.id)
         .patch({
-          verified: true,
-          verified_at: new Date()
+          verified: true
         });
 
       // Get verification settings for logging
@@ -251,7 +249,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
       try {
         await interaction.reply({
           content: '✅ Verification successful! You now have access to the server.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } catch (error) {
         if (error instanceof DiscordAPIError && error.code === 10062) {
@@ -269,7 +267,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
       try {
         await interaction.reply({
           content: '❌ Invalid verification code. Please try again.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       } catch (error) {
         if (error instanceof DiscordAPIError && error.code === 10062) {
@@ -284,7 +282,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
     try {
       await interaction.reply({
         content: '❌ An error occurred while verifying your code.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     } catch (replyError) {
       console.error('Error sending error message:', replyError);
