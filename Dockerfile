@@ -45,5 +45,4 @@ COPY .env ./
 
 EXPOSE 5532 5432
 
-CMD ["npm", "run", "migrate"]
-CMD ["npm", "run", "start"]
+CMD ["sh", "-c", "npm run migrate && npm run start"]
