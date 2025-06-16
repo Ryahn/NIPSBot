@@ -1,5 +1,6 @@
 import winston from 'winston';
 import path from 'path';
+import fs from 'fs';
 
 // Define log format
 const logFormat = winston.format.combine(
@@ -8,6 +9,14 @@ const logFormat = winston.format.combine(
   winston.format.splat(),
   winston.format.json()
 );
+
+// Define the log entry interface
+interface LogEntry {
+  level: string;
+  message: string;
+  timestamp: string;
+  [key: string]: any;
+}
 
 // Create the logger instance
 const logger = winston.createLogger({
@@ -19,7 +28,8 @@ const logger = winston.createLogger({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.printf(
-          ({ level, message, timestamp, ...metadata }) => {
+          (info: winston.Logform.TransformableInfo) => {
+            const { level, message, timestamp, ...metadata } = info;
             let msg = `${timestamp} [${level}]: ${message}`;
             if (Object.keys(metadata).length > 0) {
               msg += ` ${JSON.stringify(metadata)}`;
@@ -42,7 +52,6 @@ const logger = winston.createLogger({
 });
 
 // Create logs directory if it doesn't exist
-import fs from 'fs';
 if (!fs.existsSync('logs')) {
   fs.mkdirSync('logs');
 }
