@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder, Role, TextChannel } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder, Role } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
 
@@ -6,13 +6,12 @@ interface ImportedAlliance {
   name: string;
   members: number;
   tag: string;
-  channel: string;
   dryRun?: boolean;
 }
 
 export const data = new SlashCommandBuilder()
-  .setName('alliance_import')
-  .setDescription('Imports existing alliance roles and channels into the database')
+  .setName('guild_import')
+  .setDescription('Imports existing guild roles into the database')
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addBooleanOption(option =>
     option
@@ -25,17 +24,10 @@ export const data = new SlashCommandBuilder()
       .setName('role')
       .setDescription('Specific role to import (optional)')
       .setRequired(false)
-  )
-  .addChannelOption(option =>
-    option
-      .setName('channel')
-      .setDescription('Specific channel to import (optional)')
-      .setRequired(false)
   );
 
 async function processAlliance(
   role: Role,
-  channel: TextChannel,
   dryRun: boolean,
   importedAlliances: ImportedAlliance[],
   errors: string[]
@@ -43,7 +35,6 @@ async function processAlliance(
   // Check if alliance already exists in database
   const existingAlliance = await AllianceMembers.query()
     .where('role_id', role.id)
-    .orWhere('channel_id', channel.id)
     .first();
 
   if (existingAlliance) {
@@ -62,7 +53,6 @@ async function processAlliance(
       name: role.name,
       members: members.size,
       tag: tag,
-      channel: channel.name,
       dryRun: true
     });
     return;
@@ -72,11 +62,8 @@ async function processAlliance(
   const alliance = await AllianceMembers.query().insert({
     name: role.name,
     tag: tag,
-    pact_type: ['Non Aggression'], // Default pact type
     role_name: role.name,
     role_id: role.id,
-    channel_name: channel.name,
-    channel_id: channel.id,
   });
 
   // Import members
@@ -98,7 +85,6 @@ async function processAlliance(
     name: role.name,
     members: members.size,
     tag: tag,
-    channel: channel.name
   });
 }
 
@@ -116,76 +102,29 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const dryRun = interaction.options.getBoolean('dry_run') ?? false;
     const specificRole = interaction.options.getRole('role');
-    const specificChannel = interaction.options.getChannel('channel');
 
     const importedAlliances: ImportedAlliance[] = [];
     const errors: string[] = [];
 
     // Get all roles and channels
     const roles = guild.roles.cache;
-    const channels = guild.channels.cache;
 
-    if (specificRole || specificChannel) {
+    if (specificRole) {
       // Manual import mode
       const role = specificRole ? roles.get(specificRole.id) : null;
-      const channel = specificChannel ? channels.get(specificChannel.id) : null;
 
-      if (!role && !channel) {
-        return await interaction.editReply('❌ Please provide either a role or a channel to import.');
+      if (!role) {
+        return await interaction.editReply('❌ Please provide a role to import.');
       }
 
-      if (role && channel) {
-        // Both role and channel specified
-        if (channel.name.toLowerCase() !== role.name.toLowerCase()) {
-          return await interaction.editReply('❌ The provided role and channel names do not match.');
-        }
-        if (channel.type !== 0) { // Check if it's a text channel
-          return await interaction.editReply('❌ The specified channel must be a text channel.');
-        }
-        await processAlliance(role, channel as TextChannel, dryRun, importedAlliances, errors);
-      } else if (role) {
-        // Only role specified, find matching channel
-        const matchingChannel = channels.find(ch => 
-          ch.name.toLowerCase() === role.name.toLowerCase() && 
-          ch.type === 0 // TextChannel
-        );
-        if (!matchingChannel) {
-          return await interaction.editReply(`❌ No matching channel found for role: ${role.name}`);
-        }
-        await processAlliance(role, matchingChannel as TextChannel, dryRun, importedAlliances, errors);
-      } else if (channel) {
-        // Only channel specified, find matching role
-        if (channel.type !== 0) { // Check if it's a text channel
-          return await interaction.editReply('❌ The specified channel must be a text channel.');
-        }
-        const matchingRole = roles.find(r => 
-          r.name.toLowerCase() === channel.name.toLowerCase() &&
-          r.name !== '@everyone' &&
-          !r.managed
-        );
-        if (!matchingRole) {
-          return await interaction.editReply(`❌ No matching role found for channel: ${channel.name}`);
-        }
-        await processAlliance(matchingRole, channel as TextChannel, dryRun, importedAlliances, errors);
-      }
+      await processAlliance(role, dryRun, importedAlliances, errors);
     } else {
       // Auto import mode - process all roles
       for (const [roleId, role] of roles) {
         // Skip @everyone role and bot roles
         if (role.name === '@everyone' || role.managed) continue;
 
-        // Find corresponding channel
-        const channel = channels.find(ch => 
-          ch.name.toLowerCase() === role.name.toLowerCase() && 
-          ch.type === 0 // TextChannel
-        );
-
-        if (!channel) {
-          errors.push(`No matching channel found for role: ${role.name}`);
-          continue;
-        }
-
-        await processAlliance(role, channel as TextChannel, dryRun, importedAlliances, errors);
+        await processAlliance(role, dryRun, importedAlliances, errors);
       }
     }
 
@@ -199,7 +138,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       embed.addFields({
         name: dryRun ? 'Alliances to be Imported' : 'Successfully Imported Alliances',
         value: importedAlliances.map(a => 
-          `• ${a.name} (${a.members} members)\n  Tag: ${a.tag}\n  Channel: ${a.channel}`
+          `• ${a.name} (${a.members} members)\n  Tag: ${a.tag}`
         ).join('\n\n')
       });
     }

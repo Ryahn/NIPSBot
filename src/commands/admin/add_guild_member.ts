@@ -3,18 +3,18 @@ import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
 
 export const data = new SlashCommandBuilder()
-  .setName('add_alliance_member')
-  .setDescription('Adds a member to an alliance')
+  .setName('add_guild_member')
+  .setDescription('Adds a member to a guild')
   .addUserOption(option =>
     option
       .setName('user')
-      .setDescription('The user to add to the alliance')
+      .setDescription('The user to add to the guild')
       .setRequired(true)
   )
   .addStringOption(option =>
     option
-      .setName('alliance')
-      .setDescription('The alliance to add the user to')
+      .setName('guild')
+      .setDescription('The guild to add the user to')
       .setRequired(true)
       .setAutocomplete(true)
   );
@@ -30,16 +30,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Check if user has required roles or permissions
     const member = await guild.members.fetch(interaction.user.id);
-    const hasR5Role = member.roles.cache.some(role => role.name === 'R5');
-    const hasR4Role = member.roles.cache.some(role => role.name === 'R4');
+    const hasAdminRole = member.roles.cache.some(role => role.name === 'Admin');
     const hasModerateMembers = member.permissions.has(PermissionFlagsBits.ModerateMembers);
 
-    if (!hasModerateMembers && !hasR5Role && !hasR4Role) {
+    if (!hasAdminRole && !hasModerateMembers) {
       return await interaction.editReply('❌ You need to have either the Moderate Members permission or the R5/R4 role to use this command.');
     }
 
     const targetUser = interaction.options.getUser('user', true);
-    const allianceTag = interaction.options.getString('alliance', true);
+    const roleId = interaction.options.getString('guild', true);
 
     // Get the member object
     const targetMember = await guild.members.fetch(targetUser.id);
@@ -52,11 +51,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Find the alliance in the database
     const alliance = await AllianceMembers.query()
-      .where('tag', allianceTag)
+      .where('role_id', roleId)
       .first();
 
     if (!alliance) {
-      return await interaction.editReply('❌ Could not find the specified alliance.');
+      return await interaction.editReply('❌ Could not find the specified guild.');
     }
 
     // Check if user is already in this alliance
@@ -66,13 +65,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .first();
 
     if (existingMembership) {
-      return await interaction.editReply('❌ User is already a member of this alliance.');
+      return await interaction.editReply('❌ User is already a member of this guild.');
     }
 
     // Get the role
     const role = guild.roles.cache.get(alliance.role_id);
     if (!role) {
-      return await interaction.editReply('❌ Could not find the alliance role.');
+      return await interaction.editReply('❌ Could not find the guild role.');
     }
 
     // Add the role to the member
@@ -97,7 +96,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           original_nickname: originalNickname
         });
         
-        await interaction.editReply(`✅ Successfully added ${targetUser.username} to alliance ${alliance.name}. Note: Could not update nickname as the user is the server owner.`);
+        await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname as the user is the server owner.`);
         return;
       }
 
@@ -112,7 +111,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             original_nickname: originalNickname
           });
           
-          await interaction.editReply(`✅ Successfully added ${targetUser.username} to alliance ${alliance.name} and updated their nickname.`);
+          await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name} and updated their nickname.`);
         } catch (nicknameError) {
           console.error('Detailed nickname error:', {
             error: nicknameError,
@@ -129,7 +128,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             original_nickname: originalNickname
           });
           
-          await interaction.editReply(`✅ Successfully added ${targetUser.username} to alliance ${alliance.name}. Note: Could not update nickname.`);
+          await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname.`);
         }
       } else {
         console.log('Bot missing ManageNicknames permission');
@@ -141,7 +140,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           original_nickname: originalNickname
         });
         
-        await interaction.editReply(`✅ Successfully added ${targetUser.username} to alliance ${alliance.name}. Note: Could not update nickname due to missing permissions.`);
+        await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname due to missing permissions.`);
       }
     } catch (nicknameError) {
       console.error('Error updating nickname:', nicknameError);
@@ -153,22 +152,22 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         original_nickname: originalNickname
       });
       
-      await interaction.editReply(`✅ Successfully added ${targetUser.username} to alliance ${alliance.name}. Note: Could not update nickname.`);
+      await interaction.editReply(`✅ Successfully added ${targetUser.username} to guild ${alliance.name}. Note: Could not update nickname.`);
     }
   } catch (error) {
-    console.error('Error in add_alliance_member command:', error);
-    await interaction.editReply('❌ An error occurred while adding the member to the alliance.');
+    console.error('Error in add_guild_member command:', error);
+    await interaction.editReply('❌ An error occurred while adding the member to the guild.');
   }
 }
 
-// Autocomplete handler for alliance selection
+// Autocomplete handler for guild selection
 export async function autocomplete(interaction: AutocompleteInteraction) {
   const focusedValue = interaction.options.getFocused();
   
   try {
     // Get all alliances from the database
     const alliances = await AllianceMembers.query()
-      .select('tag', 'name')
+      .select('tag', 'name', 'role_id')
       .orderBy('name');
 
     // Filter and format the results
@@ -179,13 +178,13 @@ export async function autocomplete(interaction: AutocompleteInteraction) {
       )
       .map(alliance => ({
         name: `${alliance.name} (${alliance.tag})`,
-        value: alliance.tag
+        value: alliance.role_id
       }))
       .slice(0, 25); // Discord has a limit of 25 choices
 
     await interaction.respond(filtered);
   } catch (error) {
-    console.error('Error in alliance autocomplete:', error);
+    console.error('Error in guild autocomplete:', error);
     await interaction.respond([]);
   }
 } 

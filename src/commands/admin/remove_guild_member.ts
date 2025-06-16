@@ -3,18 +3,18 @@ import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
 
 export const data = new SlashCommandBuilder()
-  .setName('remove_alliance_member')
-  .setDescription('Removes a member from an alliance')
+  .setName('remove_guild_member')
+  .setDescription('Removes a member from a guild')
   .addUserOption(option =>
     option
       .setName('user')
-      .setDescription('The user to remove from the alliance')
+      .setDescription('The user to remove from the guild')
       .setRequired(true)
   )
   .addStringOption(option =>
     option
-      .setName('alliance')
-      .setDescription('The alliance to remove the user from')
+      .setName('guild')
+      .setDescription('The guild to remove the user from')
       .setRequired(true)
       .setAutocomplete(true)
   );
@@ -30,16 +30,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Check if user has required roles or permissions
     const member = await guild.members.fetch(interaction.user.id);
-    const hasR5Role = member.roles.cache.some(role => role.name === 'R5');
-    const hasR4Role = member.roles.cache.some(role => role.name === 'R4');
+    const hasAdminRole = member.roles.cache.some(role => role.name === 'Admin');
     const hasModerateMembers = member.permissions.has(PermissionFlagsBits.ModerateMembers);
 
-    if (!hasModerateMembers && !hasR5Role && !hasR4Role) {
+    if (!hasAdminRole && !hasModerateMembers) {
       return await interaction.editReply('❌ You need to have either the Moderate Members permission or the R5/R4 role to use this command.');
     }
 
     const targetUser = interaction.options.getUser('user', true);
-    const allianceTag = interaction.options.getString('alliance', true);
+    const guildName = interaction.options.getString('guild', true);
 
     // Get the member object
     const targetMember = await guild.members.fetch(targetUser.id);
@@ -49,11 +48,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Find the alliance in the database
     const alliance = await AllianceMembers.query()
-      .where('tag', allianceTag)
+      .where('name', guildName)
       .first();
 
     if (!alliance) {
-      return await interaction.editReply('❌ Could not find the specified alliance.');
+      return await interaction.editReply('❌ Could not find the specified guild.');
     }
 
     // Check if user is in this alliance
@@ -63,13 +62,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .first();
 
     if (!existingMembership) {
-      return await interaction.editReply('❌ User is not a member of this alliance.');
+      return await interaction.editReply('❌ User is not a member of this guild.');
     }
 
     // Get the role
     const role = guild.roles.cache.get(alliance.role_id);
     if (!role) {
-      return await interaction.editReply('❌ Could not find the alliance role.');
+      return await interaction.editReply('❌ Could not find the guild role.');
     }
 
     // Remove the role from the member
@@ -98,10 +97,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .where('alliance_id', alliance.id)
       .delete();
 
-    await interaction.editReply(`✅ Successfully removed ${targetUser.username} from alliance ${alliance.name}.`);
+    await interaction.editReply(`✅ Successfully removed ${targetUser.username} from guild ${alliance.name}.`);
   } catch (error) {
-    console.error('Error in remove_alliance_member command:', error);
-    await interaction.editReply('❌ An error occurred while removing the member from the alliance.');
+    console.error('Error in remove_guild_member command:', error);
+    await interaction.editReply('❌ An error occurred while removing the member from the guild.');
   }
 }
 
@@ -129,7 +128,7 @@ export async function autocomplete(interaction: AutocompleteInteraction) {
 
     await interaction.respond(filtered);
   } catch (error) {
-    console.error('Error in alliance autocomplete:', error);
+    console.error('Error in guild autocomplete:', error);
     await interaction.respond([]);
   }
 } 
