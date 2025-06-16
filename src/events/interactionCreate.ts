@@ -31,12 +31,26 @@ async function handleVerification(interaction: ButtonInteraction) {
     const timeout = settings?.verification_timeout || 300;
     const reminderTime = settings?.reminder_time || 60;
 
-    // Create verification record
-    const verification = await models.Verification.query().insert({
-      user_id: interaction.user.id,
-      captcha_code: generateCaptcha(),
-      verified: false
-    });
+    // Check for existing verification
+    let verification = await models.Verification.query()
+      .where('user_id', interaction.user.id)
+      .first();
+
+    if (verification) {
+      // If there's an existing verification, update it
+      verification = await models.Verification.query()
+        .patchAndFetchById(verification.id, {
+          captcha_code: generateCaptcha(),
+          verified: false
+        });
+    } else {
+      // Create new verification record
+      verification = await models.Verification.query().insert({
+        user_id: interaction.user.id,
+        captcha_code: generateCaptcha(),
+        verified: false
+      });
+    }
 
     // Send verification message
     const embed = new EmbedBuilder()
