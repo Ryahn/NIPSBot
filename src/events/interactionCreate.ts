@@ -1,7 +1,12 @@
-import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags, ChatInputCommandInteraction } from 'discord.js';
+import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError, MessageFlags, ChatInputCommandInteraction, Client, Collection } from 'discord.js';
 import { models } from '../database/models';
 import Logger from '../utils/logger';
 import { generateCaptcha } from '../utils/captcha';
+
+// Extend the Client type to include commands
+interface CustomClient extends Client {
+  commands: Collection<string, any>;
+}
 
 export const name = Events.InteractionCreate;
 export const once = false;
@@ -22,7 +27,7 @@ export async function execute(interaction: Interaction) {
         guildId: interaction.guildId
       });
 
-      const command = interaction.client.commands.get(interaction.commandName);
+      const command = (interaction.client as CustomClient).commands.get(interaction.commandName);
       if (!command) {
         Logger.warn('Command not found', {
           commandName: interaction.commandName,
