@@ -1,4 +1,4 @@
-import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Events, Interaction, ButtonInteraction, TextChannel, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ModalSubmitInteraction, ButtonBuilder, ButtonStyle, DiscordAPIError } from 'discord.js';
 import { models } from '../database/models';
 
 export const name = Events.InteractionCreate;
@@ -63,13 +63,23 @@ async function handleVerification(interaction: ButtonInteraction) {
           .first();
 
         if (verificationStatus && !verificationStatus.verified) {
-          await interaction.followUp({
-            content: `⚠️ Your verification will expire in ${reminderTime} seconds! Please complete the verification soon.`,
-            ephemeral: true
-          });
+          try {
+            await interaction.followUp({
+              content: `⚠️ Your verification will expire in ${reminderTime} seconds! Please complete the verification soon.`,
+              ephemeral: true
+            });
+          } catch (error) {
+            if (error instanceof DiscordAPIError && error.code === 10062) {
+              // Interaction expired, clean up the verification
+              await models.Verification.query()
+                .where('id', verification.id)
+                .delete();
+            }
+            console.error('Error sending reminder:', error);
+          }
         }
       } catch (error) {
-        console.error('Error sending reminder:', error);
+        console.error('Error checking verification status:', error);
       }
     }, (timeout - reminderTime) * 1000);
 
@@ -85,22 +95,35 @@ async function handleVerification(interaction: ButtonInteraction) {
             .where('id', verification.id)
             .delete();
 
-          await interaction.followUp({
-            content: '❌ Verification expired. Please try again.',
-            ephemeral: true
-          });
+          try {
+            await interaction.followUp({
+              content: '❌ Verification expired. Please try again.',
+              ephemeral: true
+            });
+          } catch (error) {
+            if (error instanceof DiscordAPIError && error.code === 10062) {
+              // Interaction expired, just log it
+              console.log('Verification expired for user:', interaction.user.id);
+            } else {
+              console.error('Error sending expiration message:', error);
+            }
+          }
 
           // Log the timeout if log channel is set
           if (settings?.log_channel_id) {
-            const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
-            if (logChannel) {
-              const logEmbed = new EmbedBuilder()
-                .setTitle('Verification Timeout')
-                .setDescription(`User ${interaction.user} failed to verify within the time limit.`)
-                .setColor('#ff0000')
-                .setTimestamp();
+            try {
+              const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
+              if (logChannel) {
+                const logEmbed = new EmbedBuilder()
+                  .setTitle('Verification Timeout')
+                  .setDescription(`User ${interaction.user} failed to verify within the time limit.`)
+                  .setColor('#ff0000')
+                  .setTimestamp();
 
-              await logChannel.send({ embeds: [logEmbed] });
+                await logChannel.send({ embeds: [logEmbed] });
+              }
+            } catch (error) {
+              console.error('Error sending log message:', error);
             }
           }
         }
@@ -119,12 +142,31 @@ async function handleVerification(interaction: ButtonInteraction) {
     (interaction as any).verificationCleanup = cleanup;
   } catch (error) {
     console.error('Error in verification handler:', error);
-    await interaction.reply({ content: '❌ An error occurred during verification.', ephemeral: true });
+    try {
+      await interaction.reply({ content: '❌ An error occurred during verification.', ephemeral: true });
+    } catch (replyError) {
+      console.error('Error sending error message:', replyError);
+    }
   }
 }
 
 async function handleCaptchaVerification(interaction: ButtonInteraction) {
   try {
+    // Check if verification is still valid
+    const verification = await models.Verification.query()
+      .where({
+        user_id: interaction.user.id,
+        verified: false
+      })
+      .first();
+
+    if (!verification) {
+      return await interaction.reply({
+        content: '❌ No pending verification found. Please start the verification process again.',
+        ephemeral: true
+      });
+    }
+
     // Create modal for captcha input
     const modal = new ModalBuilder()
       .setCustomId('captcha_modal')
@@ -144,10 +186,14 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
     await interaction.showModal(modal);
   } catch (error) {
     console.error('Error showing captcha modal:', error);
-    await interaction.reply({ 
-      content: '❌ An error occurred while showing the verification form.',
-      ephemeral: true
-    });
+    try {
+      await interaction.reply({ 
+        content: '❌ An error occurred while showing the verification form.',
+        ephemeral: true
+      });
+    } catch (replyError) {
+      console.error('Error sending error message:', replyError);
+    }
   }
 }
 
@@ -186,39 +232,63 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
 
       // Log successful verification if log channel is set
       if (settings?.log_channel_id) {
-        const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
-        if (logChannel) {
-          const logEmbed = new EmbedBuilder()
-            .setTitle('Verification Successful')
-            .setDescription(`User ${interaction.user} has successfully verified.`)
-            .setColor('#00ff00')
-            .setTimestamp();
+        try {
+          const logChannel = await interaction.guild?.channels.fetch(settings.log_channel_id) as TextChannel;
+          if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+              .setTitle('Verification Successful')
+              .setDescription(`User ${interaction.user} has successfully verified.`)
+              .setColor('#00ff00')
+              .setTimestamp();
 
-          await logChannel.send({ embeds: [logEmbed] });
+            await logChannel.send({ embeds: [logEmbed] });
+          }
+        } catch (error) {
+          console.error('Error sending log message:', error);
         }
       }
 
-      await interaction.reply({
-        content: '✅ Verification successful! You now have access to the server.',
-        ephemeral: true
-      });
+      try {
+        await interaction.reply({
+          content: '✅ Verification successful! You now have access to the server.',
+          ephemeral: true
+        });
+      } catch (error) {
+        if (error instanceof DiscordAPIError && error.code === 10062) {
+          console.log('Verification successful but interaction expired for user:', interaction.user.id);
+        } else {
+          console.error('Error sending success message:', error);
+        }
+      }
 
       // Clean up timers if they exist
       if ((interaction as any).verificationCleanup) {
         (interaction as any).verificationCleanup();
       }
     } else {
-      await interaction.reply({
-        content: '❌ Invalid verification code. Please try again.',
-        ephemeral: true
-      });
+      try {
+        await interaction.reply({
+          content: '❌ Invalid verification code. Please try again.',
+          ephemeral: true
+        });
+      } catch (error) {
+        if (error instanceof DiscordAPIError && error.code === 10062) {
+          console.log('Invalid code attempt but interaction expired for user:', interaction.user.id);
+        } else {
+          console.error('Error sending invalid code message:', error);
+        }
+      }
     }
   } catch (error) {
     console.error('Error in captcha submission:', error);
-    await interaction.reply({
-      content: '❌ An error occurred while verifying your code.',
-      ephemeral: true
-    });
+    try {
+      await interaction.reply({
+        content: '❌ An error occurred while verifying your code.',
+        ephemeral: true
+      });
+    } catch (replyError) {
+      console.error('Error sending error message:', replyError);
+    }
   }
 }
 
