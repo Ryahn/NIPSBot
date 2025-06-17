@@ -5,7 +5,6 @@ export async function up(knex: Knex): Promise<void> {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.string('guild_id').notNullable();
     table.string('log_channel_id').nullable();
-    table.string('verified_role_id').nullable();
     table.integer('verification_timeout').notNullable().defaultTo(300);
     table.integer('reminder_time').notNullable().defaultTo(60);
     table.timestamp('created_at').defaultTo(knex.fn.now());
@@ -17,7 +16,6 @@ export async function up(knex: Knex): Promise<void> {
     // Add indexes for common queries
     table.index(['guild_id']);
     table.index(['log_channel_id']);
-    table.index(['verified_role_id']);
   });
 }
 
