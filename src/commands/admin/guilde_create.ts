@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('guild_create')
@@ -50,7 +51,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(`✅ Successfully created guild role: ${name}`);
   } catch (error) {
-    console.error('Error in guild_create command:', error);
+    Logger.error('Error in guild_create command:', error);
     await interaction.editReply('❌ An error occurred while creating the guild role.');
   }
 } 

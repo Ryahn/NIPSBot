@@ -29,37 +29,37 @@ export const once = false;
 
 export async function execute(interaction: Interaction) {
   try {
-    Logger.debug('Interaction received', {
-      type: interaction.type,
-      id: interaction.id,
-      userId: interaction.user.id,
-      guildId: interaction.guildId
-    });
+    // Logger.debug('Interaction received', {
+    //   type: interaction.type,
+    //   id: interaction.id,
+    //   userId: interaction.user.id,
+    //   guildId: interaction.guildId
+    // });
 
     if (interaction.isChatInputCommand()) {
-      Logger.info('Processing chat input command', {
-        commandName: interaction.commandName,
-        userId: interaction.user.id,
-        guildId: interaction.guildId
-      });
+      // Logger.info('Processing chat input command', {
+      //   commandName: interaction.commandName,
+      //   userId: interaction.user.id,
+      //   guildId: interaction.guildId
+      // });
 
       const command = (interaction.client as CustomClient).commands.get(interaction.commandName);
       if (!command) {
-        Logger.warn('Command not found', {
-          commandName: interaction.commandName,
-          userId: interaction.user.id,
-          guildId: interaction.guildId
-        });
+        // Logger.warn('Command not found', {
+        //   commandName: interaction.commandName,
+        //   userId: interaction.user.id,
+        //   guildId: interaction.guildId
+        // });
         return await interaction.reply({ content: '❌ Command not found!', ephemeral: true });
       }
 
       try {
         await command.execute(interaction);
-        Logger.info('Command executed successfully', {
-          commandName: interaction.commandName,
-          userId: interaction.user.id,
-          guildId: interaction.guildId
-        });
+        // Logger.info('Command executed successfully', {
+        //   commandName: interaction.commandName,
+        //   userId: interaction.user.id,
+        //   guildId: interaction.guildId
+        // });
       } catch (error) {
         Logger.error('Error executing command', {
           commandName: interaction.commandName,
@@ -174,11 +174,11 @@ async function handleVerification(interaction: ButtonInteraction) {
                 .where('id', verification.id)
                 .delete();
             }
-            console.error('Error sending reminder:', error);
+            Logger.error('Error sending reminder:', error);
           }
         }
       } catch (error) {
-        console.error('Error checking verification status:', error);
+        Logger.error('Error checking verification status:', error);
       }
     }, (timeout - reminderTime) * 1000);
 
@@ -202,9 +202,9 @@ async function handleVerification(interaction: ButtonInteraction) {
           } catch (error) {
             if (error instanceof DiscordAPIError && error.code === 10062) {
               // Interaction expired, just log it
-              console.log('Verification expired for user:', interaction.user.id);
+              Logger.info('Verification expired for user:', interaction.user.id);
             } else {
-              console.error('Error sending expiration message:', error);
+              Logger.error('Error sending expiration message:', error);
             }
           }
 
@@ -222,12 +222,12 @@ async function handleVerification(interaction: ButtonInteraction) {
                 await logChannel.send({ embeds: [logEmbed] });
               }
             } catch (error) {
-              console.error('Error sending log message:', error);
+              Logger.error('Error sending log message:', error);
             }
           }
         }
       } catch (error) {
-        console.error('Error handling verification expiration:', error);
+        Logger.error('Error handling verification expiration:', error);
       }
     }, timeout * 1000);
 
@@ -240,11 +240,11 @@ async function handleVerification(interaction: ButtonInteraction) {
     // Store cleanup function for later use
     (interaction as any).verificationCleanup = cleanup;
   } catch (error) {
-    console.error('Error in verification handler:', error);
+    Logger.error('Error in verification handler:', error);
     try {
       await interaction.reply({ content: '❌ An error occurred during verification.', flags: MessageFlags.Ephemeral });
     } catch (replyError) {
-      console.error('Error sending error message:', replyError);
+      Logger.error('Error sending error message:', replyError);
     }
   }
 }
@@ -284,14 +284,14 @@ async function handleCaptchaVerification(interaction: ButtonInteraction) {
 
     await interaction.showModal(modal);
   } catch (error) {
-    console.error('Error showing captcha modal:', error);
+    Logger.error('Error showing captcha modal:', error);
     try {
       await interaction.reply({ 
         content: '❌ An error occurred while showing the verification form.',
         flags: MessageFlags.Ephemeral
       });
     } catch (replyError) {
-      console.error('Error sending error message:', replyError);
+      Logger.error('Error sending error message:', replyError);
     }
   }
 }
@@ -323,10 +323,32 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
           verified: true
         });
 
-      // Get verification settings for logging
+      // Get verification settings for logging and role assignment
       const settings = await models.VerificationSettings.query()
         .where('guild_id', interaction.guildId)
         .first();
+
+      // Assign verified role if configured
+      if (settings?.verified_role_id) {
+        try {
+          const member = await interaction.guild?.members.fetch(interaction.user.id);
+          if (member) {
+            await member.roles.add(settings.verified_role_id);
+            Logger.info('Assigned verified role to user', {
+              userId: interaction.user.id,
+              roleId: settings.verified_role_id,
+              guildId: interaction.guildId
+            });
+          }
+        } catch (error) {
+          Logger.error('Error assigning verified role:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            userId: interaction.user.id,
+            roleId: settings.verified_role_id,
+            guildId: interaction.guildId
+          });
+        }
+      }
 
       // Log successful verification if log channel is set
       if (settings?.log_channel_id) {
@@ -342,7 +364,7 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
             await logChannel.send({ embeds: [logEmbed] });
           }
         } catch (error) {
-          console.error('Error sending log message:', error);
+          Logger.error('Error sending log message:', error);
         }
       }
 
@@ -353,9 +375,9 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
         });
       } catch (error) {
         if (error instanceof DiscordAPIError && error.code === 10062) {
-          console.log('Verification successful but interaction expired for user:', interaction.user.id);
+          Logger.info('Verification successful but interaction expired for user:', interaction.user.id);
         } else {
-          console.error('Error sending success message:', error);
+          Logger.error('Error sending success message:', error);
         }
       }
 
@@ -371,21 +393,21 @@ async function handleCaptchaSubmit(interaction: ModalSubmitInteraction) {
         });
       } catch (error) {
         if (error instanceof DiscordAPIError && error.code === 10062) {
-          console.log('Invalid code attempt but interaction expired for user:', interaction.user.id);
+          Logger.info('Invalid code attempt but interaction expired for user:', interaction.user.id);
         } else {
-          console.error('Error sending invalid code message:', error);
+          Logger.error('Error sending invalid code message:', error);
         }
       }
     }
   } catch (error) {
-    console.error('Error in captcha submission:', error);
+    Logger.error('Error in captcha submission:', error);
     try {
       await interaction.reply({
         content: '❌ An error occurred while verifying your code.',
         flags: MessageFlags.Ephemeral
       });
     } catch (replyError) {
-      console.error('Error sending error message:', replyError);
+      Logger.error('Error sending error message:', replyError);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, ChannelType, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, ChannelType, ChatInputCommandInteraction, MessageFlags, Role } from 'discord.js';
 import { models } from '../../database/models';
 import Logger from '../../utils/logger';
 
@@ -14,6 +14,12 @@ export const data = new SlashCommandBuilder()
       .setName('log_channel')
       .setDescription('Channel to log verification events')
       .addChannelTypes(ChannelType.GuildText)
+      .setRequired(false)
+  )
+  .addRoleOption(option =>
+    option
+      .setName('verified_role')
+      .setDescription('Role to assign after successful verification')
       .setRequired(false)
   )
   .addIntegerOption(option =>
@@ -51,43 +57,32 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     guildId: interaction.guildId,
     options: {
       logChannel: interaction.options.getChannel('log_channel')?.id,
+      verifiedRole: interaction.options.getRole('verified_role')?.id,
       timeout: interaction.options.getInteger('timeout'),
       reminderTime: interaction.options.getInteger('reminder_time')
     }
   });
   
   try {
-    Logger.debug('Attempting to defer reply');
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    Logger.debug('Reply deferred successfully');
 
     const guildId = interaction.guildId;
-    Logger.debug('Guild ID retrieved', { guildId });
     
     if (!guildId) {
-      Logger.warn('Command used outside of a server', { userId: interaction.user.id });
       return await interaction.editReply('❌ This command can only be used in a server!');
     }
 
     const logChannel = interaction.options.getChannel('log_channel');
+    const verifiedRole = interaction.options.getRole('verified_role');
     const timeout = interaction.options.getInteger('timeout');
     const reminderTime = interaction.options.getInteger('reminder_time');
     
-    Logger.debug('Command options received', {
-      logChannel: logChannel?.id,
-      timeout,
-      reminderTime,
-      guildId
-    });
-
     // Get or create settings
-    Logger.debug('Querying database for existing settings', { guildId });
     let settings;
     try {
       settings = await models.VerificationSettings.query()
         .where('guild_id', guildId)
         .first();
-      Logger.debug('Database query completed', { settingsFound: !!settings });
     } catch (error) {
       Logger.error('Database query failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -98,15 +93,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     if (!settings) {
-      Logger.info('Creating new verification settings', { guildId });
       try {
         settings = await models.VerificationSettings.query().insert({
           guild_id: guildId,
           log_channel_id: logChannel?.id || null,
+          verified_role_id: verifiedRole?.id || null,
           verification_timeout: timeout || 300,
           reminder_time: reminderTime || 60
         });
-        Logger.debug('New settings created successfully', { settings });
       } catch (error) {
         Logger.error('Failed to create new settings', {
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -116,17 +110,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         throw error;
       }
     } else {
-      Logger.info('Updating existing settings', { guildId });
       try {
         // Update existing settings
         await models.VerificationSettings.query()
           .where('guild_id', guildId)
           .patch({
             log_channel_id: logChannel?.id || settings.log_channel_id,
+            verified_role_id: verifiedRole?.id || settings.verified_role_id,
             verification_timeout: timeout || settings.verification_timeout,
             reminder_time: reminderTime || settings.reminder_time
           });
-        Logger.debug('Settings updated successfully');
       } catch (error) {
         Logger.error('Failed to update settings', {
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -140,14 +133,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const response = [
       '✅ Verification settings updated:',
       `Log Channel: ${logChannel ? `<#${logChannel.id}>` : 'Not set'}`,
+      `Verified Role: ${verifiedRole ? `<@&${verifiedRole.id}>` : 'Not set'}`,
       `Timeout: ${timeout || settings.verification_timeout} seconds`,
       `Reminder Time: ${reminderTime || settings.reminder_time} seconds before expiry`
     ].join('\n');
 
-    Logger.debug('Preparing to send response to user');
     try {
       await interaction.editReply(response);
-      Logger.info('Command execution completed successfully', { guildId });
     } catch (error) {
       Logger.error('Failed to send response to user', {
         error: error instanceof Error ? error.message : 'Unknown error',

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, GuildChannel, Role, CategoryChannel, PermissionOverwriteManager, ChannelType, AttachmentBuilder } from 'discord.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('permdump')
@@ -120,9 +121,9 @@ export async function execute(interaction: CommandInteraction) {
     });
 
     // Clean up the file after sending
-    await fs.unlink(filePath).catch(console.error);
+    await fs.unlink(filePath).catch(Logger.error);
   } catch (error) {
-    console.error('Error in permdump command:', error);
+    Logger.error('Error in permdump command:', error);
     await interaction.editReply('❌ An error occurred while dumping permissions.');
   }
 } 

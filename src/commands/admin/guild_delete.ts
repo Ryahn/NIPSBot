@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, AutocompleteInteraction, EmbedBuilder } from 'discord.js';
 import AllianceMembers from '../../database/models/AllianceMembers';
 import UserAlliances from '../../database/models/UserAlliances';
+import Logger from '../../utils/logger';
 
 export const data = new SlashCommandBuilder()
   .setName('guild_delete')
@@ -116,7 +117,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
               await member.setNickname(userAlliance.original_nickname);
             }
           } catch (error) {
-            console.error(`Failed to revert nickname for user ${userAlliance.user_id}:`, error);
+            Logger.error(`Failed to revert nickname for user ${userAlliance.user_id}:`, error);
           }
         }
 
@@ -148,7 +149,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
     });
   } catch (error) {
-    console.error('Error in guild_delete command:', error);
+    Logger.error('Error in guild_delete command:', error);
     await interaction.editReply('❌ An error occurred while deleting the guild.');
   }
 }
@@ -177,7 +178,7 @@ export async function autocomplete(interaction: AutocompleteInteraction) {
 
     await interaction.respond(filtered);
   } catch (error) {
-    console.error('Error in guild autocomplete:', error);
+    Logger.error('Error in guild autocomplete:', error);
     await interaction.respond([]);
   }
 } 
